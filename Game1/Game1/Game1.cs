@@ -2,31 +2,41 @@
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text;
 using System;
 
 namespace Game1
 {
-    public class Assets
+    public static class Assets
     {   //simulation fields
         public static float gravity = 9.8f;
         public static float vertletMulti = 0.5f;
         public static float friction = 0.98f;
-        public static float massOfPoints = 0.9f;
-        public static float restingDistances = 15;
+        public static float massOfPoints = 0.7f;
         public static float stiffnesses = 0.9f;
-        public static byte relaxIterations = 3;
+        public static byte relaxIterations = 4;
+
+        public static byte curtainWidth = 141;
+        public static byte curtainHeight = 29;
+        public static byte pinNthTopPointMass = 5;
+        public static byte spacing = 8; //how far apart points are created
+        public static float restingDistances = 7; 
         //program assets
         public static GraphicsDeviceManager graphics;
         public static GraphicsDevice graphicsDevice;
         public static SpriteBatch spriteBatch;
         public static Texture2D lineTexture;
-        public static int gameWindowWidth = 800;
-        public static int gameWindowHeight = 400;
+        public static int gameWindowWidth = 1280;
+        public static int gameWindowHeight = 720;
         public static void Setup()
         {
             lineTexture = new Texture2D(graphicsDevice, 1, 1);
             lineTexture.SetData<Color>(new Color[] { Color.White });
         }
+        //timing/testing assets
+        public static Stopwatch updateTimer = new Stopwatch();
+        public static Stopwatch drawTimer = new Stopwatch();
     }
 
 
@@ -202,11 +212,6 @@ namespace Game1
 
     public static class Functions_Draw
     {
-        public static void DrawCursor(Rectangle Rec)
-        {
-            Assets.spriteBatch.Draw(Assets.lineTexture, Rec, Color.Blue);
-        }
-
         public static void Draw(Line Line)
         {
             Assets.spriteBatch.Draw(
@@ -228,12 +233,21 @@ namespace Game1
     #region Game (update + draw)
 
     public class Game1 : Game
-    {
+    {   //curtain position
+        public static Point curPos = new Point(16, 16);
+        //10k tix = 1ms, 16ms total = 160,000 total pixels
+        //reduce by x1000 = 160 pixels. then x8 = 1280 max size width (minus offset for looks)
+        public Rectangle maxTimeRec = new Rectangle(curPos.X, curPos.Y, 1280-31, 6);
+        //timer recs for update and draw
+        public Rectangle updateTimeRec = new Rectangle(curPos.X, curPos.Y, 100, 3);
+        public Rectangle drawTimeRec = new Rectangle(curPos.X, curPos.Y+3, 100, 3);
+        
+        //cursor rec hitbox
         public Rectangle cursorRec = new Rectangle(0, 0, 34, 34);
         List<PointMass> PointMasses;
+        PointMass grabbedPM;
         List<Line> Lines;
         int i;
-        PointMass grabbedPM;
 
         public Game1()
         {
@@ -255,68 +269,76 @@ namespace Game1
             Assets.graphicsDevice = GraphicsDevice;
             Assets.spriteBatch = new SpriteBatch(GraphicsDevice);
             Assets.Setup();
-
-            byte curtainWidth = 43;
-            byte curtainHeight = 14;
-            byte spacing = 16;
-
+            
             PointMasses = new List<PointMass>();
             Lines = new List<Line>();
             int counter;
 
-            //create the point masses
-            for (int y = 0; y < curtainHeight; y++)
+
+            #region create the point masses
+
+            for (int y = 0; y < Assets.curtainHeight; y++)
             {
-                for (int x = 0; x < curtainWidth; x++)
+                for (int x = 0; x < Assets.curtainWidth; x++)
                 {   //spread pms out
-                    PointMass pm = new PointMass(64 + x * spacing, 16 + y * spacing);
+                    PointMass pm = new PointMass(curPos.X + 64 + x * Assets.spacing, curPos.Y + y * Assets.spacing);
                     if (y == 0)
                     {
                         //pm.pinned = true; //pin entire top row
-
                         //pin some of top row curtain
-                        if (x == 0 || x == curtainWidth - 1) { pm.pinned = true; }
-                        if (x % 6 == 0) { pm.pinned = true; }
+                        if (x == 0 || x == Assets.curtainWidth - 1) { pm.pinned = true; }
+                        if (x % Assets.pinNthTopPointMass == 0) { pm.pinned = true; }
                     }
                     PointMasses.Add(pm); //ad pm to game list
                 }
             }
 
-            //setup point masses neighbors
+            #endregion
+
+
+            #region setup point masses neighbors
+
             counter = 0;
-            for (int y = 0; y < curtainHeight; y++)
+            for (int y = 0; y < Assets.curtainHeight; y++)
             {
-                for (int x = 0; x < curtainWidth; x++)
+                for (int x = 0; x < Assets.curtainWidth; x++)
                 {
-                    if (x < (curtainWidth - 1)) //connect left to right point, and vice versa
+                    if (x < (Assets.curtainWidth - 1)) //connect left to right point, and vice versa
                     {   //neighbors ref ////0=up, 1=right, 2=down, 3=left
                         PointMasses[counter].neighbors[1] = PointMasses[counter + 1];
                         PointMasses[counter + 1].neighbors[3] = PointMasses[counter];
                     }
-                    if (y < (curtainHeight - 1)) //connect top to bottom, and vice versa
+                    if (y < (Assets.curtainHeight - 1)) //connect top to bottom, and vice versa
                     {
-                        PointMasses[counter].neighbors[2] = PointMasses[counter + curtainWidth];
-                        PointMasses[counter + curtainWidth].neighbors[0] = PointMasses[counter];
+                        PointMasses[counter].neighbors[2] = PointMasses[counter + Assets.curtainWidth];
+                        PointMasses[counter + Assets.curtainWidth].neighbors[0] = PointMasses[counter];
                     }
                     //track which pm index we are at
                     counter++;
                 }
             }
 
-            //assign point masses to lines
+            #endregion
+
+
+            #region assign point masses to lines
+
             counter = 0;
-            for (int y = 0; y < curtainHeight; y++)
+            for (int y = 0; y < Assets.curtainHeight; y++)
             {
-                for (int x = 0; x < curtainWidth; x++)
+                for (int x = 0; x < Assets.curtainWidth; x++)
                 {
-                    if (x < (curtainWidth - 1)) //connect left to right point
+                    if (x < (Assets.curtainWidth - 1)) //connect left to right point
                     { Lines.Add(new Line(PointMasses[counter], PointMasses[counter + 1])); }
-                    if (y < (curtainHeight - 1)) //connect top to bottom
-                    { Lines.Add(new Line(PointMasses[counter], PointMasses[counter + curtainWidth])); }
+                    if (y < (Assets.curtainHeight - 1)) //connect top to bottom
+                    { Lines.Add(new Line(PointMasses[counter], PointMasses[counter + Assets.curtainWidth])); }
                     //track which pm index we are at
                     counter++;
                 }
             }
+
+            #endregion
+
         }
 
         protected override void UnloadContent() { }
@@ -324,6 +346,7 @@ namespace Game1
         protected override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
+            Assets.updateTimer.Restart();
 
 
             #region Process Curtain Simulation
@@ -333,9 +356,6 @@ namespace Game1
             {
                 Functions_Simulate.Constrain(PointMasses[i]);
                 Functions_Simulate.ApplyPhysics(PointMasses[i]);
-                //relax neighbors x3
-                Functions_Simulate.RelaxPM(PointMasses[i]);
-                Functions_Simulate.RelaxPM(PointMasses[i]);
                 Functions_Simulate.RelaxPM(PointMasses[i]);
             }
 
@@ -353,14 +373,15 @@ namespace Game1
 
             if (InputData.IsLeftMouseBtnPress())
             {   //grab one PM colliding with cursor rec
-                for (int g = 0; g < PointMasses.Count; g++)
+                for (i = 0; i < PointMasses.Count; i++)
                 {   //do not allow input to be passed to pinned point masses
-                    if (PointMasses[g].pinned == false)
+                    if (PointMasses[i].pinned == false)
                     {
-                        if (cursorRec.Contains(PointMasses[g].X, PointMasses[g].Y))
+                        if (cursorRec.Contains(PointMasses[i].X, PointMasses[i].Y))
                         {   //grab PM, bail
-                            grabbedPM = PointMasses[g];
-                            g = PointMasses.Count;
+                            grabbedPM = PointMasses[i];
+                            grabbedPM.pinned = true;
+                            i = PointMasses.Count;
                         }
                     }
                 }
@@ -368,15 +389,19 @@ namespace Game1
             if (currentMouseState.LeftButton == ButtonState.Pressed)
             {   //handle dragging state (left mouse button down)
                 if (grabbedPM != null)
-                {   //relax the point and her neighbors while dragging
-                    Functions_Simulate.RelaxPM(grabbedPM);
-                    Functions_Simulate.RelaxPM(grabbedPM);
-                    //drag the point until released
+                {   //drag the point until released
                     grabbedPM.X = currentMouseState.X;
                     grabbedPM.Y = currentMouseState.Y;
                 }
             }
-            else { grabbedPM = null; } //release grabbed pm
+            else
+            {   //release grabbed pm
+                if (grabbedPM != null)
+                {
+                    grabbedPM.pinned = false;
+                    grabbedPM = null;
+                }
+            } 
 
             #endregion
 
@@ -384,16 +409,29 @@ namespace Game1
             //update how the lines connect to their pointMasses
             for (i = 0; i < Lines.Count; i++)
             { Functions_Simulate.UpdateLine(Lines[i]); }
+
+            Assets.updateTimer.Stop();
+            updateTimeRec.Width = (int)(Assets.updateTimer.ElapsedTicks / 1000 * 8);
         }
 
         protected override void Draw(GameTime gameTime)
         {
+            Assets.drawTimer.Restart();
             GraphicsDevice.Clear(Color.CornflowerBlue);
             Assets.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp);
             //draw curtain lines + cursor
             for (i = 0; i < Lines.Count; i++) { Functions_Draw.Draw(Lines[i]); }
-            //Functions_Draw.DrawCursor(cursorRec);
+            //Assets.spriteBatch.Draw(Assets.lineTexture, cursorRec, Color.Blue); //draw cursor's hitbox
+            //draw update/draw timers
+
+            //maxTimeRec
+            Assets.spriteBatch.Draw(Assets.lineTexture, maxTimeRec, Color.Blue*0.25f);
+            Assets.spriteBatch.Draw(Assets.lineTexture, updateTimeRec, Color.Red);
+            Assets.spriteBatch.Draw(Assets.lineTexture, drawTimeRec, Color.Green);
             Assets.spriteBatch.End();
+
+            Assets.drawTimer.Stop();
+            drawTimeRec.Width = (int)(Assets.drawTimer.ElapsedTicks / 1000 * 8);
             base.Draw(gameTime);
         }
     }
