@@ -18,7 +18,7 @@ namespace Game1
         public static byte relaxIterations = 4;
 
         public static byte curtainWidth = 141;
-        public static byte curtainHeight = 29;
+        public static byte curtainHeight = 27;
         public static byte pinNthTopPointMass = 5;
         public static byte spacing = 8; //how far apart points are created
         public static float restingDistances = 7; 
@@ -186,8 +186,8 @@ namespace Game1
             //reset variables
             Pm.lastX = Pm.X;
             Pm.lastY = Pm.Y;
-            Pm.X = (int)nextX;
-            Pm.Y = (int)nextY;
+            Pm.X = nextX;
+            Pm.Y = nextY;
             Pm.accX = 0;
             Pm.accY = 0;
         }
