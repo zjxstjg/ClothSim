@@ -3,7 +3,7 @@
 
 ![](https://github.com/MrGrak/ClothSim/blob/master/exampleGif.gif)  
 
-+ more detail coming soon 
+simple cloth sim implemented in monogame, for learning purposes.
 
 
 
